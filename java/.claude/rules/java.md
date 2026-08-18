@@ -151,6 +151,106 @@ private String priceSnapshot;
 - `@deprecated` 标注替代方法
 - **禁止**：空 Javadoc、逐行复述代码、过时注释、`@author` 等模板垃圾
 
+## 可维护性原则
+
+1. **避免魔法值**：具有业务含义、协议含义，或会在多个位置使用的字符串、数字、状态码、类型码、时间单位、数量上限等，必须定义为有明确语义的常量或枚举后再使用，不要在业务代码中散落字面量。
+2. **先查找再定义**：定义常量或枚举前，先搜索当前模块、`common` 模块及相关规范，确认是否已有相同业务含义的定义。只有字面量相同不代表语义相同；确认语义一致后复用，禁止为同一含义重复定义。
+3. **按共享范围选择类型**：需要被多个类、模块或业务流程共同使用的稳定业务值，必须定义为枚举，并集中封装编码、描述和转换逻辑。单类或单方法使用的值按最小必要作用域定义为 `private static final` 常量，避免无归属的公共常量。
+4. **配置与常量分离**：环境相关、部署后可能调整的值应通过配置文件和配置类管理，不要伪装成 Java 常量写死在代码中。
+5. **保持使用方一致**：常量名称应表达业务含义而不是原始值；修改常量或枚举时，同时检查调用方、序列化值和相关测试，避免只修改定义而遗漏使用方。
+
+## 变量精简原则
+
+适用范围：**新增代码时必须遵守**；修改既有代码时，只在本次改动直接涉及的代码范围内遵守，不得为满足本原则而顺带重构无关的既有代码。
+
+1. **单次传参变量下沉到被调用函数内部**：一个局部变量只被用来传给另一个函数作为参数、且只被传这一次时，不要在调用处提前计算好存成变量再传参，应改造被调用的函数本身，让它在内部完成这部分获取或计算。目标是修改函数签名/实现，而不是简单地把变量的计算表达式内联到调用处的参数位置。
+   - 反例：`String status = A.equals(result.getCode()) ? "S" : "F"; update(record, status, result);`
+   - 正例：`update(record, result);`，`update` 内部自行从 `result` 派生出状态
+2. **代码行数过长时做语义化封装**：单个方法内出现过长的顺序逻辑时，优先提取为命名清晰的私有方法（并按需补充简要注释说明「为什么」），而不是堆在一个方法体里，以提升可读性。
+
+## 禁止使用三元表达式
+
+**禁止使用三元表达式（`condition ? valueA : valueB`），嵌套三元表达式同样禁止。** 三元表达式把条件判断与取值压缩进一行，牺牲可读性换取书写便利；嵌套三元更是难以阅读、调试和维护，容易引入求值顺序与优先级错误。业务代码应使用 `if/else` 或提前返回显式表达分支。
+
+### 替代写法
+
+1. **简单分支使用 `if/else` 显式赋值**：
+
+```java
+// 禁止
+String status = order.getStatus() == 1 ? "已确认" : "待确认";
+
+// 推荐
+String status;
+if (order.getStatus() == 1) {
+    status = "已确认";
+} else {
+    status = "待确认";
+}
+```
+
+2. **分支返回不同结果时使用提前返回**：
+
+```java
+// 禁止
+return result == null ? Response.error("404", "订单不存在") : Response.success(result);
+
+// 推荐
+if (result == null) {
+    return Response.error("404", "订单不存在");
+}
+return Response.success(result);
+```
+
+3. **多条件取值时提取方法或映射**：需要根据多个条件取值的场景，优先提取为命名清晰的私有方法，或使用枚举 / `Map` 映射，不要用嵌套三元堆叠判断。
+4. **函数调用与 Stream 表达式：先算进临时变量，再使用**：三元不允许直接写在函数调用参数或 Stream 表达式内部，应先用 `if/else` 算出结果存入临时变量，再传参或使用：
+
+```java
+// 禁止：三元直接写在函数调用参数里
+send(record, A.equals(result.getCode()) ? "S" : "F");
+
+// 推荐：先算临时变量，再传参
+String status;
+if (A.equals(result.getCode())) {
+    status = "S";
+} else {
+    status = "F";
+}
+send(record, status);
+```
+
+```java
+// 禁止：三元直接写在 Stream 表达式内部
+List<String> statusList = orders.stream()
+        .map(order -> order.getStatus() == 1 ? "已确认" : "待确认")
+        .toList();
+
+// 推荐：lambda 内先用 if/else 算出临时变量再返回
+List<String> statusList = orders.stream()
+        .map(order -> {
+            String status;
+            if (order.getStatus() == 1) {
+                status = "已确认";
+            } else {
+                status = "待确认";
+            }
+            return status;
+        })
+        .toList();
+```
+
+### 注意事项
+
+- 三元表达式涉及包装类型时会触发自动拆箱，可能引入运行时 NPE：
+
+```java
+// 禁止：flag 为 false 时对 null 拆箱，抛 NPE
+int value = flag ? 1 : null;
+```
+
+- 函数调用参数、Stream 表达式内部等位置直接书写三元会破坏可读性和可调试性，必须先计算到临时变量再使用（见「替代写法」第 4 条）。
+- 适用范围与「变量精简原则」一致：**新增代码必须遵守**；修改既有代码时，只在本次改动直接涉及的代码范围内将三元改为 `if/else`，不得为满足本原则而顺带重构无关的既有代码。
+
 ## 锁管理原则
 
 本项目的锁管理围绕三个维度展开：锁的选型、持锁范围、释放保障。
@@ -280,3 +380,19 @@ finally:
 
 **豁免场景（什么情况不报错）**：  
 如果该方法有 `@Nullable` 注解（如 `javax.annotation.Nullable`、`org.springframework.lang.Nullable` 等），表明开发者有意声明该返回值可能为空，且调用方已知晓此风险，此时规则会自动忽略，不再强制要求返回空集合。
+
+## 异常处理
+
+- 业务异常抛 `BusinessException(code, message)` → HTTP 200 + code "422"
+- 参数校验异常由 `GlobalExceptionHandler` 捕获 → HTTP 200 + code "422"
+- NPE / RuntimeException → HTTP 500
+
+## 日志
+
+- `@Slf4j(topic = "business")` 记录业务日志
+- topic 分类便于日志聚合
+
+## 响应模式
+
+- `Response.success(data)` / `Response.error(code, msg)`
+- `PageResponse<T>` 分页响应
