@@ -381,6 +381,37 @@ finally:
 **豁免场景（什么情况不报错）**：  
 如果该方法有 `@Nullable` 注解（如 `javax.annotation.Nullable`、`org.springframework.lang.Nullable` 等），表明开发者有意声明该返回值可能为空，且调用方已知晓此风险，此时规则会自动忽略，不再强制要求返回空集合。
 
+## 错误结果传递
+
+### 规则说明
+
+方法返回值只表达成功结果。业务失败、参数不合法、资源不存在、状态不允许或外部依赖调用失败等错误，必须通过明确的异常传递，不要使用 `null`、`false`、`-1`、错误码、错误消息、空对象或 `Response.error(...)` 作为业务方法的错误信号。
+
+- 业务层或领域层发现错误时，抛出 `BusinessException(code, message)` 或项目中已有的更具体业务异常。
+- 调用方只处理成功路径；接口适配层或统一异常处理器负责将异常转换为 `Response.error(code, message)` 等协议响应。
+- 不要在中间层捕获业务异常后重新编码为普通返回值。需要补充上下文时保留原始异常作为 cause，避免丢失错误原因。
+- `Optional.empty()`、空集合和 `false` 只用于表达正常业务结果，例如查询无数据、集合为空或条件判断为否，不得用来表示操作失败。
+
+### 示例
+
+```java
+// 禁止：使用返回值混合表达成功和失败
+public Response<Order> createOrder(CreateOrderCommand command) {
+    if (!inventoryService.hasStock(command.getSkuId())) {
+        return Response.error("STOCK_NOT_ENOUGH", "库存不足");
+    }
+    return Response.success(saveOrder(command));
+}
+
+// 推荐：业务方法返回成功结果，错误通过异常传递
+public Order createOrder(CreateOrderCommand command) {
+    if (!inventoryService.hasStock(command.getSkuId())) {
+        throw new BusinessException("STOCK_NOT_ENOUGH", "库存不足");
+    }
+    return saveOrder(command);
+}
+```
+
 ## 异常处理
 
 - 业务异常抛 `BusinessException(code, message)` → HTTP 200 + code "422"
