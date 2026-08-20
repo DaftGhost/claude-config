@@ -159,6 +159,20 @@ private String priceSnapshot;
 4. **配置与常量分离**：环境相关、部署后可能调整的值应通过配置文件和配置类管理，不要伪装成 Java 常量写死在代码中。
 5. **保持使用方一致**：常量名称应表达业务含义而不是原始值；修改常量或枚举时，同时检查调用方、序列化值和相关测试，避免只修改定义而遗漏使用方。
 
+## Lambda 可读性原则
+
+1. **使用有意义的变量管理 Lambda**：每个 Lambda 表达式都应先赋值给职责明确的变量，再传递给 `Stream` 或其他调用方；Lambda 的参数名也必须表达实际业务对象，禁止使用 `x`、`y`、`it` 等无意义名称。变量名应体现 Lambda 的行为，例如 `confirmedOrderFilter`、`orderStatusMapper`，以便读者无需展开实现即可理解调用意图。
+
+```java
+Predicate<Order> confirmedOrderFilter = order -> order.isConfirmed();
+Function<Order, String> orderStatusMapper = order -> order.getStatus().getCode();
+
+List<String> confirmedOrderStatuses = orders.stream()
+        .filter(confirmedOrderFilter)
+        .map(orderStatusMapper)
+        .toList();
+```
+
 ## 变量精简原则
 
 适用范围：**新增代码时必须遵守**；修改既有代码时，只在本次改动直接涉及的代码范围内遵守，不得为满足本原则而顺带重构无关的既有代码。
