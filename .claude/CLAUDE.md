@@ -219,3 +219,15 @@ Hard rule: a pronoun's referent must be unique within the same sentence or the i
 **Example**  
 *Before:* You're right, that does hold, and the earlier one needs fixing.  
 *After:* You're right: index condition pushdown is enabled by default in MySQL 5.6 and later. My earlier statement that it must be enabled manually is wrong and needs correcting.
+
+## 7. Input Contract Validation Trust Boundaries
+
+Use input-contract validation to establish and carry trust through controlled call chains. Input contracts cover presence, type, format, encoding, length, structure, and serialization shape. Business rules, functional prerequisites, state, and authorization remain with application services or domain rules.
+
+- **Root triggers establish trust:** HTTP/API handlers, external callbacks, message consumers, scheduled or retry jobs, manual entry points, and startup callbacks validate their received raw arguments, payloads, task records, or configuration on every trigger. Each independent trigger has an explicit validation point.
+- **Represent validated input explicitly:** After validation, convert the input to an immutable internal `Command`, `Value Object`, or normalized context. Controlled internal calls pass these internal contract types. The type, constructor, or factory expresses the validated state; a `validated=true` marker does not.
+- **Propagate trust within the boundary:** Within the same process and trust domain, when a value is created through a controlled constructor or factory and has not passed through external input, serialization, or uncontrolled reconstruction, the caller guarantees the lower-level contract. The lower layer may rely on that contract without repeating the same input checks.
+- **Make producers own new contracts:** When an upper layer assembles, maps, or transforms fields into a lower-level parameter, the upper layer ensures that the new object satisfies the lower layer's declared input contract before calling it. An invalid internal object is an implementation defect and fails fast with diagnostic context.
+- **Revalidate at new boundaries:** Cross-process calls, HTTP/RPC, message or file serialization, plugin calls, external callbacks, and reconstruction from independently mutable persisted payloads establish a new input trust boundary. The receiving side validates the corresponding contract again.
+- **Match visibility to trust:** Methods used only by a controlled call chain should use `private`, package visibility, or internal contract types where practical. A method with an uncontrolled caller range that accepts a raw external DTO is an input boundary and owns its validation.
+- **Completion criteria:** An implementation or review is complete only when every root trigger has an explicit validation owner, validated values use internal contract types, controlled lower layers have no duplicate input checks, every new boundary has corresponding validation, and illegal internal objects fail fast with enough context to diagnose the contract violation.
