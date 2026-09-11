@@ -1,8 +1,9 @@
 #!/usr/bin/env node
-const fs = require("fs");
-const path = require("path");
-const { fileURLToPath } = require("url");
-const PATH_KEYS = new Set([
+
+var fs = require("fs");
+var path = require("path");
+var { fileURLToPath } = require("url");
+var PATH_KEYS = new Set([
   "file",
   "file_path",
   "filePath",
@@ -11,7 +12,7 @@ const PATH_KEYS = new Set([
   "path",
   "uri"
 ]);
-const SHELL_PUNCTUATION = new Set([";", "&&", "||", "|", "<", ">", "(", ")"]);
+var SHELL_PUNCTUATION = new Set([";", "&&", "||", "|", "<", ">", "(", ")"]);
 function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -29,8 +30,14 @@ function readEvent() {
 function toPosix(value) {
   return value.split(path.sep).join("/");
 }
+function scriptProjectRoot() {
+  const scriptPath = process.argv[1];
+  if (typeof scriptPath === "string" && scriptPath) {
+    return path.resolve(path.dirname(scriptPath), "..", "..");
+  }
+  return process.cwd();
+}
 function findProjectRoot(event) {
-  const scriptRoot = path.resolve(__dirname, "..", "..");
   const cwdValue = event.cwd;
   if (typeof cwdValue === "string" && cwdValue) {
     const cwd = path.resolve(cwdValue);
@@ -46,7 +53,7 @@ function findProjectRoot(event) {
       candidate = parent;
     }
   }
-  return scriptRoot;
+  return scriptProjectRoot();
 }
 function parseRulePatterns(content) {
   const lines = content.split(/\r?\n/);
@@ -215,19 +222,17 @@ function isWithin(candidate, root) {
   return relative === "" || relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
 }
 function expandPath(candidate, rawPath, cwd) {
-  if (typeof fs.globSync === "function") {
-    return fs.globSync(candidate);
+  const globSync = fs.globSync;
+  if (typeof globSync === "function") {
+    return globSync(candidate);
   }
-
   const normalizedPattern = rawPath.replace(/\\/g, "/");
   const firstGlobIndex = normalizedPattern.search(/[*?[]/);
-  const staticPrefix =
-    firstGlobIndex >= 0 ? normalizedPattern.slice(0, firstGlobIndex) : normalizedPattern;
+  const staticPrefix = firstGlobIndex >= 0 ? normalizedPattern.slice(0, firstGlobIndex) : normalizedPattern;
   const basePath = staticPrefix.slice(0, staticPrefix.lastIndexOf("/"));
   const baseDirectory = path.resolve(cwd, basePath || ".");
   const absolutePattern = path.isAbsolute(rawPath);
   const matches = [];
-
   function visit(directory) {
     let entries;
     try {
@@ -235,13 +240,10 @@ function expandPath(candidate, rawPath, cwd) {
     } catch {
       return;
     }
-
     for (const entry of entries) {
       const entryPath = path.join(directory, entry.name);
       if (entry.isFile()) {
-        const matchPath = absolutePattern
-          ? toPosix(entryPath)
-          : toPosix(path.relative(cwd, entryPath));
+        const matchPath = absolutePattern ? toPosix(entryPath) : toPosix(path.relative(cwd, entryPath));
         if (matchesPattern(matchPath, normalizedPattern)) {
           matches.push(entryPath);
         }
@@ -252,14 +254,12 @@ function expandPath(candidate, rawPath, cwd) {
       }
     }
   }
-
   visit(baseDirectory);
   return matches;
 }
-
 function existingFiles(rawPaths, cwd, projectRoot) {
   const files = [];
-  const seen = new Set();
+  const seen = new Set;
   const resolvedRoot = fs.realpathSync(projectRoot);
   for (const rawPath of rawPaths) {
     let pathValue = rawPath.trim();
@@ -277,9 +277,7 @@ function existingFiles(rawPaths, cwd, projectRoot) {
       pathValue = pathValue.slice(1);
     }
     const candidate = path.resolve(cwd, pathValue);
-    const expandedCandidates = /[*?[]/.test(pathValue)
-      ? expandPath(candidate, pathValue, cwd)
-      : [candidate];
+    const expandedCandidates = /[*?[]/.test(pathValue) ? expandPath(candidate, pathValue, cwd) : [candidate];
     for (const expanded of expandedCandidates) {
       let stat;
       try {
