@@ -1,0 +1,18 @@
+{
+  "description": "Load repository rules that match files referenced by local tool calls.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$(git rev-parse --show-toplevel)/.codex/hooks/load_rule_context.js\"",
+            "timeout": 10,
+            "statusMessage": "Loading ./.claude/rules/*",
+            "additionalContextLimit": 12000
+          }
+        ]
+      }
+    ]
+  }
+}
